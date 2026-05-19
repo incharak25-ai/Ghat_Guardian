@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GHAT-GUARDIAN — Rescue Operations Centre</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="style.css"/>
+
+  <!-- Backend URL config — change this to your Replit URL -->
+  <script>
+    window.BACKEND_URL = 'http://localhost:8000';
+    window.WS_URL      = 'ws://localhost:8000/ws/telemetry/';
+  </script>
+</head>
+<body>
+
+<!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+<div id="header">
+  <div class="header-logo">
+    GHAT<span style="color:var(--accent)">·</span>GUARDIAN
+    <span>RESCUE OPERATIONS CENTRE</span>
+  </div>
+  <div class="header-status">
+    <span><span class="status-dot"></span>SYSTEM ONLINE</span>
+    <span>WS: <span id="ws-status" style="color:var(--medium)">CONNECTING</span></span>
+    <span>IST <span id="clock">--:--:--</span></span>
+    <span style="color:var(--low)">NH75 · KARNATAKA</span>
+  </div>
+</div>
+
+<!-- ── MAIN LAYOUT ─────────────────────────────────────────────────────── -->
+<div id="app">
+
+  <!-- LEFT: Map + Status bar -->
+  <div id="map-col">
+
+    <!-- Panel 01: Live Vehicle Map -->
+    <div id="map-panel" class="panel">
+      <div class="map-overlay">
+        <div class="map-instruction">📍 TAP TWO POINTS → OSRM ROUTE</div>
+      </div>
+      <div id="map"></div>
+    </div>
+
+    <!-- Status Bar (below map) -->
+    <div id="status-bar">
+      <div class="stat-item">
+        <div>
+          <div class="stat-label">Vehicles</div>
+          <div><span class="stat-value" id="stat-vehicles">0</span></div>
+        </div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <div>
+          <div class="stat-label">Active Alerts</div>
+          <div><span class="stat-value" id="stat-alerts" style="color:var(--critical)">0</span></div>
+        </div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <div>
+          <div class="stat-label">Avg Speed</div>
+          <div>
+            <span class="stat-value" id="stat-speed">0</span>
+            <span class="stat-unit"> km/h</span>
+          </div>
+        </div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item">
+        <div>
+          <div class="stat-label">Latency</div>
+          <div><span class="stat-value" id="stat-latency" style="font-size:14px">--</span></div>
+        </div>
+      </div>
+      <div class="stat-divider"></div>
+      <div class="stat-item" style="flex:1">
+        <div style="width:100%">
+          <div class="stat-label" style="margin-bottom:4px">Route History</div>
+          <div id="route-chips" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /map-col -->
+
+  <!-- RIGHT: Sidebar panels -->
+  <div id="sidebar">
+
+    <!-- Panel 02: Vehicle Status -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">02 · Vehicle Status</div>
+        <div class="panel-badge" id="veh-count-badge" style="color:var(--low);border-color:var(--low)">0 ONLINE</div>
+      </div>
+      <div class="panel-body" style="padding:0">
+        <table id="vehicle-table">
+          <thead>
+            <tr>
+              <th>ID</th><th>km/h</th><th>Risk</th><th>Fog</th><th>Time</th>
+            </tr>
+          </thead>
+          <tbody id="vehicle-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 03: AI Risk Engine -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">03 · AI Risk Engine</div>
+        <div class="panel-badge" id="risk-vehicle" style="color:var(--accent);border-color:var(--accent)">--</div>
+      </div>
+      <div class="panel-body">
+        <div id="risk-display">
+          <div class="risk-level-big" id="risk-level-big" style="color:var(--low)">LOW</div>
+          <div class="risk-warning" id="risk-warning"></div>
+          <div id="ttc-display">TTC: --s</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 04: Fog & Visibility -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">04 · Fog & Visibility</div>
+        <div class="panel-badge" style="color:var(--text-secondary);border-color:var(--border)">LDR · LASER</div>
+      </div>
+      <div class="panel-body">
+        <div id="fog-container">
+          <div style="text-align:center;color:var(--text-secondary);font-family:'Share Tech Mono',monospace;font-size:11px;padding:12px 0">
+            Awaiting sensor data...
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 05: SOS Alert -->
+    <div id="sos-panel" class="panel">
+      <div class="panel-header">
+        <div class="panel-title" style="color:var(--sos)">05 · SOS ALERT</div>
+        <div class="panel-badge" style="color:var(--sos);border-color:var(--sos)">AUTO-IMU</div>
+      </div>
+      <div class="panel-body">
+        <div class="sos-inactive" id="sos-inactive">
+          <div style="font-size:20px;margin-bottom:6px">🛡</div>
+          No active emergencies<br>
+          <span style="font-size:10px">MPU6050 monitoring for crash signature &gt;2.5G</span>
+        </div>
+        <div id="sos-active" style="display:none">
+          <div class="sos-vehicle" id="sos-vehicle-id">--</div>
+          <div class="sos-coords" id="sos-coords">--</div>
+          <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px" id="sos-trigger">--</div>
+          <div class="sos-eta" id="sos-eta">--:--</div>
+          <div class="sos-unit">ETA · <span id="sos-unit">Locating rescue unit...</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 06: V2V Message Feed -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">06 · V2V Message Feed</div>
+        <div class="panel-badge" style="color:var(--medium);border-color:var(--medium)">
+          SERVER SIM · <span id="v2v-count">0</span>
+        </div>
+      </div>
+      <div class="panel-body" style="padding:8px 12px">
+        <div id="v2v-log">
+          <div style="text-align:center;color:var(--text-secondary);font-family:'Share Tech Mono',monospace;font-size:10px;padding:8px 0">
+            No V2V alerts yet
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Panel 07: Rescue Units -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-title">07 · Rescue Units</div>
+        <div class="panel-badge" style="color:var(--low);border-color:var(--low)">LIVE · OVERPASS</div>
+      </div>
+      <div class="panel-body">
+        <div id="rescue-container">
+          <div style="text-align:center;color:var(--text-secondary);font-family:'Share Tech Mono',monospace;font-size:10px;padding:12px 0">
+            Locating nearby units...
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /sidebar -->
+
+</div><!-- /app -->
+
+<!-- Scripts — order matters: Leaflet → map.js → panels.js -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="map.js"></script>
+<script src="panels.js"></script>
+
+</body>
+</html>

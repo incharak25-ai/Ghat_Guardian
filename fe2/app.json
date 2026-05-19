@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "Ghat Guardian",
+    "slug": "ghat-guardian",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "backgroundColor": "#020509",
+    "splash": {
+      "backgroundColor": "#020509"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.ghatguardian.driver"
+    },
+    "android": {
+      "package": "com.ghatguardian.driver",
+      "permissions": [
+        "VIBRATE",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        { "locationAlwaysAndWhenInUsePermission": "Allow Ghat Guardian to use your location for safety alerts." }
+      ]
+    ],
+    "extra": {
+      "backendUrl": "http://localhost:8000",
+      "wsUrl": "ws://localhost:8000/ws/vehicle/"
+    }
+  }
+}
