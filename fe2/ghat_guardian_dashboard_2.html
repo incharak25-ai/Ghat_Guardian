@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+p<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/>
@@ -471,6 +471,11 @@ function setRoute(coords,label){
 
 // ── LIVE RESCUE FETCH via Overpass API ───────────────────
 async function fetchRescueUnits(coords){
+  console.log(
+  'fetchRescueUnits called with:',
+  coords[0],
+  coords[coords.length-1]
+);
   // Show loading state in panel
   document.getElementById('rbdg').textContent='SCANNING...';
   document.getElementById('rbody').innerHTML=`
@@ -693,13 +698,13 @@ function hideOverlay(){const o=document.getElementById('pick-overlay');if(o)o.st
 function showOverlay(){const o=document.getElementById('pick-overlay');if(o)o.style.display='flex';}
 
 // ── VEHICLES ─────────────────────────────────────────────
-let DV={
-  'GG-001':{i:.00,risk:'LOW',   fog:91,temp:22.1,speed:0,hdg:195,sos:false},
-  'GG-002':{i:.22,risk:'MEDIUM',fog:62,temp:19.4,speed:0,hdg:200,sos:false},
-  'GG-003':{i:.44,risk:'HIGH',  fog:35,temp:17.8,speed:0,hdg:188,sos:false},
-  'GG-004':{i:.66,risk:'LOW',   fog:88,temp:23.5,speed:0,hdg:192,sos:false},
-};
-const vmk={},vpos={},vtrail={};
+// ── VEHICLES ─────────────────────────────────────────────
+// REAL BACKEND VEHICLES ONLY
+let DV = {};
+
+const vmk = {},
+      vpos = {},
+      vtrail = {};
 
 function spreadVehicles(){
   const ids=Object.keys(DV);
@@ -865,32 +870,299 @@ function paintRescue(){
 }
 
 // ── WEBSOCKET ─────────────────────────────────────────────
+// ── WEBSOCKET ─────────────────────────────────────────────
+console.log("GHAT GUARDIAN WS STARTING");
+
 (function wsInit(){
+
   try{
-    const ws=new WebSocket('ws://localhost:8000/ws/telemetry/');
-    ws.onopen=()=>{const e=document.getElementById('wsb');e.textContent='● LIVE';e.className='on';};
-    ws.onmessage=e=>{
-      try{const m=JSON.parse(e.data);
-        if(m.type==='telemetry'){S.vehicles[m.payload.vehicle_id]=m.payload;upsert(m.payload.vehicle_id,m.payload.lat,m.payload.lng,m.payload.sos_active?'#FF0033':(RC[m.payload.risk_level]||RC.LOW),m.payload.heading||0);}
-        else if(m.type==='sos')trigSOS(m.payload);
-        else if(m.type==='v2v')addV2V(m.payload);
-        else if(m.type==='snapshot')m.payload.vehicles?.forEach(v=>S.vehicles[v.vehicle_id]=v);
-        paintAll();
-      }catch(_){}
+
+    const ws = new WebSocket(
+      'ws://127.0.0.1:8000/ws/telemetry/'
+    );
+
+    ws.onopen = () => {
+
+      console.log("WEBSOCKET CONNECTED");
+
+      const e = document.getElementById('wsb');
+
+      if(e){
+        e.textContent = '● LIVE';
+        e.className = 'on';
+      }
     };
-    ws.onclose=()=>setTimeout(wsInit,4000);
-  }catch(_){}
+
+    ws.onmessage = (event) => {
+
+      console.log("RAW MESSAGE:", event.data);
+
+      try{
+
+        const msg = JSON.parse(event.data);
+
+        console.log("PARSED:", msg);
+
+        // DIRECT PAYLOAD SUPPORT
+        const data = msg.payload || msg;
+        // SOS MESSAGE
+if(msg.type === "sos"){
+
+  console.log("SOS RECEIVED");
+
+  S.sos = msg.payload;
+
+  trigSOS(msg.payload);
+
+  return;
+}
+
+        if(!data.vehicle_id){
+          console.log("NO VEHICLE ID FOUND");
+          return;
+        }
+
+        // SAVE VEHICLE
+        S.vehicles[data.vehicle_id] = {
+          vehicle_id: data.vehicle_id,
+          lat: data.lat || 12.9716,
+          lng: data.lng || 77.5946,
+          speed: data.speed || 0,
+          heading: data.heading || 0,
+          risk_level: data.risk_level || 'LOW',
+          warning: data.warning || 'Monitoring',
+          fog_visibility: data.fog_visibility || 0,
+          temperature: data.temperature || 0,
+          humidity: data.humidity || 0,
+          ambient_light: data.ambient_light || 0,
+          sos_active: data.sos_active || false,
+          ttc_seconds: data.ttc_seconds || null,
+          timestamp: data.timestamp || new Date().toISOString()
+        };
+
+        // UPDATE MAP VEHICLE
+        upsert(
+          data.vehicle_id,
+          data.lat || 12.9716,
+          data.lng || 77.5946,
+          data.sos_active
+            ? '#FF0033'
+            : (RC[data.risk_level] || RC.LOW),
+          data.heading || 0
+        );
+
+        // FORCE UI REFRESH
+        paintAll();
+
+        console.log("UI UPDATED");
+
+      }catch(err){
+
+        console.error(
+          "MESSAGE PARSE ERROR:",
+          err
+        );
+      }
+    };
+
+    ws.onerror = (err) => {
+
+      console.error(
+        "WEBSOCKET ERROR:",
+        err
+      );
+    };
+
+    ws.onclose = () => {
+
+      console.log(
+        "WEBSOCKET CLOSED - RETRYING"
+      );
+
+      setTimeout(wsInit,3000);
+    };
+
+  }catch(err){
+
+    console.error(
+      "WS INIT FAILED:",
+      err
+    );
+  }
+
+})();
+// ── CLOCK ─────────────────────────────────────────────────
+setInterval(()=>{
+  document.getElementById('clk').textContent =
+    new Date().toLocaleTimeString(
+      'en-GB',
+      {
+        hour:'2-digit',
+        minute:'2-digit',
+        second:'2-digit'
+      }
+    ) + ' IST';
+},1000);
+
+// ── BOOT + LOCAL STORAGE RESTORE ─────────────────────────
+
+// INITIAL UI
+paintSOS();
+paintV2V();
+
+// Rescue panel default
+document.getElementById('rbody').innerHTML = `
+<div style="
+  font-family:var(--mono);
+  font-size:9px;
+  color:var(--dim);
+  padding:10px;
+  opacity:.4;
+  text-align:center
+">
+  Set a route to load nearby rescue units
+</div>
+`;
+
+// SAVE ORIGINAL FUNCTIONS
+const __originalSetRoute = setRoute;
+const __originalClearRoute = clearRoute;
+
+// PATCH setRoute TO AUTO SAVE
+setRoute = function(coords,label){
+
+  // CALL ORIGINAL
+  __originalSetRoute(coords,label);
+
+  // SAVE TO BROWSER
+  try{
+
+    localStorage.setItem(
+      'ghat_guardian_route',
+      JSON.stringify({
+        coords: coords,
+        label: label
+      })
+    );
+
+    console.log(
+      'ROUTE SAVED'
+    );
+
+  }catch(err){
+
+    console.error(
+      'ROUTE SAVE FAILED',
+      err
+    );
+
+  }
+};
+
+// PATCH clearRoute TO REMOVE STORAGE
+clearRoute = function(){
+
+  try{
+
+    localStorage.removeItem(
+      'ghat_guardian_route'
+    );
+
+    console.log(
+      'ROUTE CLEARED'
+    );
+
+  }catch(err){
+
+    console.error(
+      'CLEAR STORAGE FAILED',
+      err
+    );
+
+  }
+
+  __originalClearRoute();
+};
+
+// RESTORE ROUTE AFTER PAGE REFRESH
+(function restoreRoute(){
+
+  try{
+
+    const saved =
+      localStorage.getItem(
+        'ghat_guardian_route'
+      );
+
+    if(!saved){
+
+      console.log(
+        'NO SAVED ROUTE'
+      );
+
+      return;
+    }
+
+    const parsed =
+      JSON.parse(saved);
+
+    if(
+      !parsed.coords ||
+      !parsed.coords.length
+    ){
+
+      console.log(
+        'INVALID SAVED ROUTE'
+      );
+
+      return;
+    }
+
+    console.log(
+      'RESTORING ROUTE'
+    );
+
+    // RESTORE ROUTE
+    __originalSetRoute(
+      parsed.coords,
+      parsed.label || 'Saved Route'
+    );
+
+    // FIT MAP
+    map.fitBounds(
+      L.polyline(parsed.coords).getBounds(),
+      {
+        padding:[28,28]
+      }
+    );
+
+    // HIDE OVERLAY
+    hideOverlay();
+
+    // MESSAGE
+    document.getElementById(
+      'mnote'
+    ).textContent =
+      '✔ Previous route restored';
+
+    setHint(`
+      <span class="rok">
+        ✔ Saved route restored successfully
+      </span>
+    `);
+
+  }catch(err){
+
+    console.error(
+      'ROUTE RESTORE FAILED',
+      err
+    );
+
+  }
+
 })();
 
-// ── CLOCK ─────────────────────────────────────────────────
-setInterval(()=>{document.getElementById('clk').textContent=new Date().toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' IST';},1000);
-
-// ── BOOT — no route, show overlay ────────────────────────
-paintSOS();paintV2V();
-// Rescue panel init message
-document.getElementById('rbody').innerHTML=`<div style="font-family:var(--mono);font-size:9px;color:var(--dim);padding:10px;opacity:.4;text-align:center">Set a route to load nearby rescue units</div>`;
-setInterval(simTick,1000);
-// Overlay already visible via HTML — no action needed
+// Overlay already handled by restore
 </script>
 </body>
 </html>

@@ -14,9 +14,10 @@
       --green:       #0b94ef;
       --green-dim:   rgba(24, 13, 231, 0.15);
       --green-glow:  rgba(10, 195, 228, 0.35);
-      --green-line:  rgba(29,158,117,0.2);
+      --green-line:  rgba(247, 249, 252, 0.2);
       --bg:          #060b14;
-      --card-bg:     rgba(6,11,20,0.94);
+      --card-bg:     
+      rgba(2, 5, 10, 0.94);
       --text:        #e0f5ee;
       --muted:       rgba(13, 102, 228, 0.5);
       --danger:      #FF0033;
@@ -646,10 +647,17 @@
         );
 
         /* Redirect after 1.5s — replace href with your actual pages */
-        setTimeout(() => {
-          window.location.href =
-            selectedRole === 'rescue' ? 'index.html' : 'index.html';
-        }, 1500);
+        /* Redirect after login */
+setTimeout(() => {
+
+  localStorage.setItem('gg_vehicle', vid);
+  localStorage.setItem('gg_role', selectedRole);
+  localStorage.setItem('gg_name', name);
+
+  window.location.href = "ghat_guardian_dashboard_2.html";
+
+}, 1500);
+        
 
       }, 1800);
     }

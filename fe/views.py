@@ -64,16 +64,28 @@ def process_telemetry_data(data: dict) -> dict:
         nearby_vehicles=nearby_vehicles
     )
 
-    # ── Check if vehicle is in a Black Spot zone ──────────────────────────
+        # ── Check if vehicle is in a Black Spot zone ──────────────────────────
     in_black_spot = BlackSpot.objects.filter(
         zone__contains=current_point
     ).first()
 
-    if in_black_spot:
-        if risk_result['risk_level'] in ['LOW', 'MEDIUM']:
-            risk_result['risk_level'] = 'HIGH'
-        risk_result['warning'] = risk_result['warning'] or in_black_spot.warning_msg
+    # ── Override risk level using fog visibility ──────────────────────────
+    fog = float(data.get('fog_visibility', 100))
 
+    if fog < 30:
+        risk_result['risk_level'] = 'CRITICAL'
+    elif fog < 60:
+        risk_result['risk_level'] = 'HIGH'
+    elif fog < 80:
+        risk_result['risk_level'] = 'MEDIUM'
+    else:
+        risk_result['risk_level'] = 'LOW'
+
+    if in_black_spot:
+        risk_result['warning'] = (
+            risk_result['warning']
+            or in_black_spot.warning_msg
+        )
     # ── Get or create vehicle ─────────────────────────────────────────────
     vehicle, _ = Vehicle.objects.get_or_create(vehicle_id=vehicle_id)
 
